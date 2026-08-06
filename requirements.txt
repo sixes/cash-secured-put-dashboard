@@ -1,0 +1,20 @@
+# Longbridge/LongPort SDK.
+# PINNED to 3.0.18: all 4.x wheels are manylinux_2_39 with no sdist, and this host is
+# glibc 2.34, so 4.x cannot install. 3.0.x also uses Config.from_env(), not from_apikey_env().
+longport==3.0.18
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+jinja2==3.1.5
+python-dotenv==1.0.1
+httpx==0.28.1
+numpy==2.2.1
+pandas==2.2.3
+
+# Long-history daily closes for the price chart (Longbridge caps candlesticks() at 1000
+# bars, ~4y, which cannot see a true all-time high). This is a scraper, not a supported
+# API: imported lazily and every call degrades to the Longbridge window on failure.
+yfinance==1.5.2
+
+pytest==8.3.4
+pytest-asyncio==1.4.0

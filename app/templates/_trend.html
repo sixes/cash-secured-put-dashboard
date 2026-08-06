@@ -1,0 +1,97 @@
+{% set t = p.trend %}
+<div class="cards">
+  {% if p.chart %}{% include "_chart.html" %}{% endif %}
+
+  <div class="card">
+    <h4>Drawdown from high</h4>
+    {% if t.drawdown %}
+      <p class="big {{ 'neg' if t.drawdown.drawdown_pct < 0 else '' }}">
+        {{ '%+.2f'|format(t.drawdown.drawdown_pct) }}%
+      </p>
+      <p class="sub">
+        high {{ '%.2f'|format(t.drawdown.high) }}
+        {%- if t.drawdown.high_since %} since {{ t.drawdown.high_since }}{% endif %}
+        · {{ t.drawdown.high_n }}-session window
+      </p>
+      {% if t.drawdown.drawdown_52w_pct is not none %}
+        <p class="sub">
+          52w: {{ '%+.2f'|format(t.drawdown.drawdown_52w_pct) }}%
+          (high {{ '%.2f'|format(t.drawdown.high_52w) }})
+        </p>
+      {% endif %}
+    {% else %}
+      <p class="big">—</p><p class="sub">no price history</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h4>Distance from SMA{{ t.sma200.window }}</h4>
+    {% if t.sma200.sufficient and t.sma200.distance_pct is not none %}
+      <p class="big {{ 'neg' if t.sma200.distance_pct < 0 else 'pos' }}">
+        {{ '%+.2f'|format(t.sma200.distance_pct) }}%
+      </p>
+      <p class="sub">SMA {{ '%.2f'|format(t.sma200.sma) }} · n={{ t.sma200.n }}</p>
+    {% else %}
+      <p class="big">—</p>
+      <p class="sub badge">n={{ t.sma200.n }}/{{ t.sma200.window }} insufficient</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h4>Realized vol {{ t.rv20.window }}d</h4>
+    {% if t.rv20.rv is not none %}
+      <p class="big">{{ '%.2f'|format(t.rv20.rv * 100) }}%</p>
+      <p class="sub">
+        {{ t.rv20.n_returns }} returns
+        {%- if not t.rv20.sufficient %} <span class="badge">insufficient</span>{% endif %}
+      </p>
+    {% else %}
+      <p class="big">—</p><p class="sub badge">n={{ t.rv20.n_returns }} insufficient</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h4>IV vs RV</h4>
+    {% set ivrv = p.chain.iv_rv if p.chain else none %}
+    {% if ivrv and ivrv.ratio %}
+      <p class="big">{{ '%.2f'|format(ivrv.ratio) }}×</p>
+      <p class="sub">
+        ATM IV {{ '%.2f'|format(ivrv.atm_iv * 100) }}%
+        · spread {{ '%+.2f'|format(ivrv.spread_points) }} vol pts
+      </p>
+      <p class="sub">30d constant maturity, ATM</p>
+    {% else %}
+      <p class="big">—</p><p class="sub">no ATM IV</p>
+    {% endif %}
+  </div>
+
+  {% set ivr = p.view.iv_rank %}
+  <div class="card {{ 'dim' if not ivr or not ivr.sufficient else '' }}">
+    <h4>IV Rank</h4>
+    {% if ivr and ivr.rank is not none %}
+      <p class="big">{{ '%.0f'|format(ivr.rank) }}</p>
+      <p class="sub">
+        range {{ '%.2f'|format(ivr.low * 100) }}–{{ '%.2f'|format(ivr.high * 100) }}%
+        {%- if ivr.percentile is not none %} · pctile {{ '%.0f'|format(ivr.percentile) }}{% endif %}
+      </p>
+      <p class="sub">
+        <span class="badge">{{ ivr.label }}</span>
+        {#- Only claim a sample size when we hold the observations; DoltHub gives us an
+            asserted 52-week high/low, not the series behind it. #}
+        {% if ivr.series_backed %}n={{ ivr.n }}{% else %}publisher's range{% endif %}
+        {%- if ivr.as_of %} · as of {{ ivr.as_of }}{% endif %}
+      </p>
+      {% if not ivr.sufficient %}
+        <p class="sub badge warn">n={{ ivr.n }}/{{ settings.min_iv_history_days }} — too thin to trust</p>
+      {% endif %}
+      {% if not ivr.level_displayable %}
+        {# A vol index is a whole-strip variance measure, ~1.19x this ticker's ATM IV.
+           Rank transfers under the affine map; the level does not. #}
+        <p class="sub">{{ ivr.proxy_of }} level is not this ticker's IV — rank only</p>
+      {% endif %}
+    {% else %}
+      <p class="big">—</p>
+      <p class="sub">no IV history yet — recording daily</p>
+    {% endif %}
+  </div>
+</div>

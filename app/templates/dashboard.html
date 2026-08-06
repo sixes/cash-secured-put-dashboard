@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% for e in errors %}
+    <p class="error">{{ e }}</p>
+  {% endfor %}
+
+  {% for p in panels %}
+    {#- The stream must carry the effective parameters, or its patch frames would
+        recompute the match and the liquidity flags from the defaults and overwrite
+        the page that was just rendered correctly. #}
+    <section class="panel" data-ticker="{{ p.symbol }}"
+             data-stream="/api/stream/{{ p.symbol|urlencode }}{% if param_query %}?{{ param_query }}{% endif %}">
+      <h2>
+        {{ p.ticker }}
+        <span class="spot" data-spot>{{ '%.2f'|format(p.view.spot) }}</span>
+      </h2>
+      {% if p.view.error %}
+        <p class="error">last refresh failed: {{ p.view.error }} — figures below are stale</p>
+      {% endif %}
+      {% if p.view.quota_wait_seconds > 1 %}
+        <p class="note wait">
+          Chain rebuilt after waiting {{ '%.1f'|format(p.view.quota_wait_seconds) }}s for
+          option quota — the account-wide budget is {{ p.cost.limit }} option symbols per
+          rolling minute and this {{ p.cost.tenors }}-tenor rebuild billed
+          {{ p.cost.last_rebuild }} of them.
+        </p>
+      {% elif p.view.underlying_seconds > 2 %}
+        <p class="note wait">
+          Price history refetched in {{ '%.1f'|format(p.view.underlying_seconds) }}s — no
+          option quota spent, but the daily bars and the chart were rebuilt.
+        </p>
+      {% endif %}
+      {% include "_trend.html" %}
+      {% include "_options.html" %}
+    </section>
+  {% endfor %}
+
+  {% if not panels and not errors %}
+    <p class="error">No data. Check that the Longbridge credentials are set in .env</p>
+  {% endif %}
+{% endblock %}
+
+{% block footer %}
+  <h3>Metric conventions</h3>
+  <dl>
+    <dt>Price chart</dt>
+    <dd>Drawn from <strong>one</strong> adjustment basis, named on the card — Yahoo's
+        auto-adjusted closes (full history, so its high really is an all-time high), or
+        the ≤1000-bar Longbridge forward-adjusted window until that fetch lands. The two
+        are never stitched: the step on the changeover date would be an artefact, not a
+        move. Running high is an <strong>expanding</strong> max and the SMA a full-series
+        mean, both computed over the whole series and then windowed to the last
+        {{ params.chart_window_sessions }} sessions shown, so neither resets at the left
+        edge. The right edge is the last daily <em>close</em>; the live price in the panel
+        heading is a different series and is not patched onto the line. Where both bases
+        are available their SMA{{ params.sma_window }}s are compared, and a gap wider
+        than {{ settings.sma_cross_source_tolerance_pct }}% is flagged rather than
+        averaged away.</dd>
+    <dt>Drawdown</dt>
+    <dd>Close-based, against the <strong>expanding</strong> max of the fetched window
+        (max 1000 daily bars ≈ 4 years — <em>not</em> a true all-time high). The 52-week
+        figure is reported separately.</dd>
+    <dt>SMA{{ params.sma_window }}</dt>
+    <dd>Simple mean of the last {{ params.sma_window }} trading-day closes. Below
+        {{ params.sma_window }} valid closes it is left blank with the actual <em>n</em>,
+        never shown as a partial mean.</dd>
+    <dt>RV{{ params.rv_window }}</dt>
+    <dd>Zero-mean estimator <code>sqrt(mean(r²))·sqrt(252)</code> over
+        {{ params.rv_window }} log returns — the variance-swap-consistent form, which is
+        the correct thing to compare against implied vol.</dd>
+    <dt>DTE</dt>
+    <dd>Calendar days in America/New_York, expiry day = 0, <code>T = DTE/365</code>.
+        Expiries are screened in the {{ params.dte_min }}–{{ params.dte_max }} DTE
+        window.</dd>
+    <dt>Greeks</dt>
+    <dd>Black-76, computed <strong>locally</strong> from the API's implied vol. The API's
+        own theta is unusable — its sign flips across moneyness — so it is not used. The
+        API's delta is kept only as a health check (flagged above a 0.02 difference).</dd>
+    <dt>Forward</dt>
+    <dd>Implied by put-call parity from ATM mid prices, which avoids assuming a dividend
+        yield. Risk-free rate: {{ rate.label }}.</dd>
+    <dt>Theta / Vega</dt>
+    <dd>Theta is shown <strong>positive for a seller</strong> (decay is income). Vega is
+        per share per 1 IV point; the per-contract column is ×100.</dd>
+    <dt>Premium</dt>
+    <dd>At mid, as a percent of strike; annualized simple (×365/DTE), not compounded. The
+        bid-based figure is the conservative case.</dd>
+    <dt>IV vs RV</dt>
+    <dd>Uses <strong>ATM</strong> IV, never the sold put's own IV, because skew biases the
+        wing high by construction and would fake a variance risk premium.</dd>
+    <dt>IV Rank</dt>
+    <dd>Where 30-day ATM IV sits in its trailing 252-session range, computed
+        <strong>within a single source</strong> — mixing raw IV levels across sources would
+        inject a fake vol jump on the changeover date. Preference: our own daily recording
+        once it spans a year, else the matching vol index (VIX/VXN/RVX/VXD), else DoltHub's
+        published 52-week range. A vol index is a whole-strip variance measure running
+        ≈1.19× this ticker's ATM IV, so only its <em>rank</em> transfers; its level is never
+        shown as the ticker's IV. Greyed out below
+        {{ settings.min_iv_history_days }} observations.</dd>
+    <dt>Liquidity</dt>
+    <dd>Liquid when absolute spread ≤ {{ '%g'|format(params.max_abs_spread) }}
+        <em>or</em> relative ≤ {{ '%g'|format(params.max_rel_spread_pct) }}% of mid. A zero
+        bid is never liquid, since there is no exit.</dd>
+    <dt>Data source</dt>
+    <dd>Longbridge (LongPort) OpenAPI. Prices stream by push; greeks are polled every
+        {{ settings.greeks_poll_seconds|int }}s because option quote requests are capped at
+        500 symbols per rolling minute.</dd>
+  </dl>
+
+  <h3>Chain columns</h3>
+  <table class="cols">
+    <thead>
+      <tr><th>Column</th><th>Meaning</th><th>Calculation</th><th>Updates</th></tr>
+    </thead>
+    <tbody>
+      {% for col in chain_columns %}
+        <tr>
+          <th scope="row">{{ col.header or col.label }}</th>
+          <td>{{ col.meaning }}</td>
+          <td class="mono">{{ col.formula }}</td>
+          <td>{{ col.updates }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">
+    {% for name, note in row_states %}<strong>{{ name }}</strong> — {{ note }} {% endfor %}
+    {{ missing_note }} {{ unquoted_note }}
+    <em>push</em> means the cell is patched live as quotes arrive; <em>poll</em> means it is
+    recomputed on the {{ settings.greeks_poll_seconds|int }}s rebuild of the best tenor;
+    <em>slow</em> means every other expiry, rebuilt every
+    {{ settings.slow_tenor_poll_seconds|int }}s — so a comparison row can be minutes older
+    than the bid beside it, and its Age cell says so.
+  </p>
+{% endblock %}

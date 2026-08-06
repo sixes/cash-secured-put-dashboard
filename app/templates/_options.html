@@ -1,0 +1,133 @@
+{% set slices = p.slices %}
+{% set best = p.best %}
+{% set matches = p.matches %}
+{% set quoted = p.quoted %}
+{% set cost = p.cost %}
+
+{% if p.chain and p.chain.warnings %}
+  <ul class="warnings">
+    {% for w in p.chain.warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+{% endif %}
+
+{% if not p.candidates %}
+  <p class="error">No put candidates in the
+     {{ '%g'|format(params.delta_screen_band[0]) }}–{{ '%g'|format(params.delta_screen_band[1]) }} delta band
+     for this ticker.</p>
+{% else %}
+  <p class="meta">
+    {{ cost.tenors }} tenor{{ '' if cost.tenors == 1 else 's' }} priced in the
+    {{ params.dte_min }}–{{ params.dte_max }} DTE window ·
+    {{ cost.contracts }} contracts screened · top {{ cost.quoted }} quoted ·
+    {{ cost.fast }} live every {{ cost.fast_seconds }}s,
+    {{ cost.slow }} refreshed every {{ cost.slow_seconds }}s ·
+    ~{{ cost.units_per_min }} of {{ cost.limit }} option-quota units per minute
+  </p>
+
+  <table class="tenors">
+    <caption>
+      Same delta, different expiries. Annualized premium is a simple ×365/DTE rate, not a
+      return you can expect to repeat — a shorter tenor almost always annualizes higher, and
+      Γ/$ is what it charges for that.
+    </caption>
+    <thead>
+      <tr>
+        <th>Expiry</th>
+        <th title="Calendar days to expiry, expiry day = 0">DTE</th>
+        <th title="At-the-money implied vol for this expiry — the term structure the yield differences come from">ATM IV</th>
+        <th title="This tenor's own contract nearest the delta target, so tenors are compared at comparable moneyness">Δ</th>
+        <th>Strike</th>
+        <th title="Midpoint of the quoted spread; a dash means this tenor's match is not subscribed">Mid</th>
+        <th title="Premium as a percent of the cash secured">Prem %K</th>
+        <th title="Prem %K × 365 / DTE, simple and uncompounded. A rate, not an expected annual return">Ann %</th>
+        <th title="Time decay per calendar day per contract, positive for the seller">Θ/day/ct</th>
+        <th title="Gamma per dollar of premium collected — the convexity a high annualized yield is charging for">Γ/$</th>
+        <th></th>
+        <th title="How long ago this tenor's greeks were billed, and on which clock">Age</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sl in slices %}
+        {% set c = sl.match.candidate if sl.match else none %}
+        <tr class="{{ 'best' if c and c.symbol == best else '' }}">
+          <td>{{ sl.expiry }}</td>
+          <td class="num">{{ sl.dte }}</td>
+          <td class="num">{{ '%.2f'|format(sl.atm_iv * 100) ~ '%' if sl.atm_iv else '—' }}</td>
+          <td class="num">{{ '%.3f'|format(c.delta) if c and c.delta is not none else '—' }}</td>
+          <td class="num">{{ '%.2f'|format(c.strike) if c else '—' }}</td>
+          <td class="num">{{ '%.3f'|format(c.spread.mid) if c and c.spread.mid is not none else '—' }}</td>
+          <td class="num">{{ '%.3f'|format(c.premium.pct_of_strike) if c and c.premium.pct_of_strike is not none else '—' }}</td>
+          <td class="num">{{ '%.2f'|format(c.premium.annualized_pct) if c and c.premium.annualized_pct is not none else '—' }}</td>
+          <td class="num pos">{{ '%+.2f'|format(c.theta_day_contract) if c and c.theta_day_contract is not none else '—' }}</td>
+          <td class="num">{{ '%.4f'|format(c.gamma_per_premium) if c and c.gamma_per_premium is not none else '—' }}</td>
+          <td>
+            {% if not c %}<span class="badge">no match</span>
+            {% elif c.spread.zero_bid %}<span class="badge bad">no bid</span>
+            {% elif c.spread.mid is none %}<span class="badge">unquoted</span>
+            {% elif not c.spread.liquid %}<span class="badge warn">wide</span>{% endif %}
+            {%- if sl.match and sl.match.off_band %}<span class="badge warn">off band</span>{% endif %}
+          </td>
+          <td class="num age">
+            {% if sl.clock == 'fast' %}live{% else %}{{ '%d'|format(sl.age) }}s{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if best and p.chain.best_tenor_reason %}
+    <p class="meta">Boxed above: {{ p.chain.best_tenor_reason }}. A description of the
+       ranking, not a recommendation.</p>
+  {% endif %}
+
+  <table class="chain">
+    <thead>
+      <tr>
+        {%- for col in chain_columns %}
+        <th title="{{ col.label }} — {{ col.meaning }} {{ col.formula }}">{{ col.header }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in p.candidates %}
+        {% set sl = p.tenor_of[c.expiry] %}
+        <tr data-symbol="{{ c.symbol }}"
+            class="{{ 'best' if c.symbol == best else '' }}
+                   {{ 'match' if c.symbol in matches else '' }}
+                   {{ 'in-band' if c.in_delta_band else '' }}
+                   {{ '' if c.symbol in quoted else 'unquoted' }}">
+          <td>{{ c.expiry }}</td>
+          <td class="num">{{ '%.2f'|format(c.strike) }}</td>
+          <td class="num">{{ '%+.2f'|format(c.moneyness_pct) }}%</td>
+          <td class="num">{{ '%.2f'|format(c.iv * 100) if c.iv else '—' }}%</td>
+          <td class="num">
+            {{ '%.3f'|format(c.delta) if c.delta is not none else '—' }}
+            {%- if c.delta_mismatch %}<span class="badge" title="differs from the API's delta by more than 0.02">≠api</span>{% endif %}
+          </td>
+          <td class="num">{{ '%.2f'|format(c.vega_contract) if c.vega_contract is not none else '—' }}</td>
+          <td class="num pos">{{ '%+.2f'|format(c.theta_day_contract) if c.theta_day_contract is not none else '—' }}</td>
+          <td class="num">{{ '{:,}'.format(c.open_interest) if c.open_interest else '—' }}</td>
+          <td class="num live" data-f="bid">{{ '%.2f'|format(c.spread.bid) if c.spread.bid is not none else '—' }}</td>
+          <td class="num live" data-f="ask">{{ '%.2f'|format(c.spread.ask) if c.spread.ask is not none else '—' }}</td>
+          <td class="num live" data-f="mid">{{ '%.3f'|format(c.spread.mid) if c.spread.mid is not none else '—' }}</td>
+          <td class="num live" data-f="rel_spread_pct">{{ '%.2f'|format(c.spread.rel_spread_pct) ~ '%' if c.spread.rel_spread_pct is not none else '—' }}</td>
+          <td class="num live" data-f="premium_pct">{{ '%.3f'|format(c.premium.pct_of_strike) if c.premium.pct_of_strike is not none else '—' }}</td>
+          <td class="num live" data-f="annualized_pct">{{ '%.2f'|format(c.premium.annualized_pct) if c.premium.annualized_pct is not none else '—' }}</td>
+          <td class="num model">{{ '%.2f'|format(c.model_annualized_pct) if c.model_annualized_pct is not none else '—' }}</td>
+          <td class="num">{{ '%.4f'|format(c.gamma_per_premium) if c.gamma_per_premium is not none else '—' }}</td>
+          <td class="num age">{% if sl.clock == 'fast' %}live{% else %}{{ '%d'|format(sl.age) }}s{% endif %}</td>
+          <td data-f="flags">
+            {% if c.symbol not in quoted %}<span class="badge">unquoted</span>
+            {% elif c.spread.zero_bid %}<span class="badge bad">no bid</span>
+            {% elif not c.spread.liquid %}<span class="badge warn">wide</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="meta">Rows are ordered by rank, not by date: contracts inside the
+     {{ '%g'|format(params.delta_band[0]) }}–{{ '%g'|format(params.delta_band[1]) }} band first,
+     then the wider screening band as context. Model ann % is a Black-76 figure at the API's
+     IV and is never a substitute for the quote columns beside it.</p>
+{% endif %}

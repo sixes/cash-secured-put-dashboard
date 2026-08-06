@@ -1,0 +1,371 @@
+:root {
+  --bg: #11141a;
+  --panel: #181c24;
+  --line: #262c38;
+  --text: #dfe4ec;
+  --dim: #8b95a7;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --accent: #58a6ff;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.4rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+
+.search { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+.search input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 0.35rem 0.6rem;
+  width: 11rem;
+  font: inherit;
+  text-transform: uppercase;
+}
+.search input:focus { outline: 1px solid var(--accent); }
+
+.search button {
+  background: var(--accent);
+  border: 0;
+  border-radius: 4px;
+  color: #06131f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+}
+
+.search .reset { color: var(--dim); font-size: 0.85rem; }
+
+/* The parameter form. Full-width inside the header's flex row so opening it pushes the
+   page down rather than squeezing the ticker box. */
+.params { flex-basis: 100%; font-size: 0.82rem; }
+.params > summary {
+  cursor: pointer;
+  color: var(--dim);
+  padding: 0.2rem 0;
+  user-select: none;
+}
+.params > summary:hover { color: var(--text); }
+.params > summary .badge { margin-left: 0.4rem; }
+.params .note { color: var(--dim); margin: 0.35rem 0 0.5rem; max-width: 60rem; line-height: 1.45; }
+
+.params fieldset {
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  border-radius: 4px;
+  margin: 0 0 0.6rem;
+  padding: 0.3rem 0.7rem 0.6rem;
+}
+.params fieldset.cost-free { border-left-color: var(--ok); }
+.params fieldset.cost-rebuild { border-left-color: var(--warn); }
+.params fieldset.cost-trend { border-left-color: var(--accent); }
+.params legend { color: var(--text); font-weight: 600; padding: 0 0.3rem; }
+
+.params .fields { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; }
+.params label { display: flex; flex-direction: column; gap: 0.15rem; }
+.params label > span { color: var(--dim); font-size: 0.74rem; white-space: nowrap; }
+.params input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono);
+  padding: 0.25rem 0.4rem;
+  width: 6.5rem;
+}
+.params input:focus { outline: 1px solid var(--accent); }
+
+.origin {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+.origin.code { color: var(--dim); }
+.origin.saved { color: var(--warn); border-color: var(--warn); }
+.origin.url { color: var(--accent); border-color: var(--accent); }
+
+.params .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.params .actions button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.7rem;
+}
+.params .actions button:first-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06131f;
+  font-weight: 600;
+}
+
+.panel p.note.wait {
+  border-left: 2px solid var(--accent);
+  background: #12202e;
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin: 0 0 0.8rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--dim);
+  display: inline-block;
+}
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.idle { background: var(--dim); }
+.dot.bad { background: var(--bad); }
+
+.quota { font-family: var(--mono); font-size: 0.78rem; }
+
+main { padding: 1.2rem 1.4rem 2rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 1.4rem;
+  padding: 1rem 1.2rem 1.2rem;
+}
+
+.panel h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.8rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.spot { font-family: var(--mono); font-size: 1rem; color: var(--dim); }
+
+.cards { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-bottom: 1rem; }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.6rem 0.85rem;
+  min-width: 11rem;
+}
+.card h4 {
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+}
+.card .big { font-family: var(--mono); font-size: 1.35rem; margin: 0; }
+.card .sub { color: var(--dim); font-size: 0.74rem; margin: 0.1rem 0 0; }
+.neg { color: var(--bad); }
+.pos { color: var(--ok); }
+
+.card.dim { opacity: 0.55; }
+.card.dim .big { color: var(--dim); }
+
+/* The chart spans the row; the five metric cards wrap underneath it. */
+.card.wide { flex: 1 1 100%; }
+
+svg.price {
+  display: block;
+  width: 100%;
+  /* The viewBox scales uniformly, text included, so cap the width or the 9px axis
+     labels grow with the container. */
+  max-width: 780px;
+  height: auto;
+  margin-bottom: 0.3rem;
+}
+svg.price polyline { fill: none; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+svg.price .close { stroke: var(--accent); }
+svg.price .high { stroke: var(--dim); stroke-dasharray: 3 2; }
+svg.price .sma { stroke: var(--warn); }
+svg.price .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+svg.price text { font-family: var(--mono); font-size: 9px; fill: var(--dim); }
+
+.legend {
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  margin: 0 0 0.4rem;
+}
+.legend .key { width: 0.9rem; border-top: 2px solid var(--dim); }
+.legend .key:not(:first-child) { margin-left: 0.7rem; }
+.legend .key.close { border-color: var(--accent); }
+.legend .key.high { border-top-style: dashed; border-color: var(--dim); }
+.legend .key.sma { border-color: var(--warn); }
+
+.meta { color: var(--dim); font-size: 0.85rem; margin: 0.4rem 0; }
+.meta strong { color: var(--text); font-family: var(--mono); }
+
+table.chain,
+table.tenors {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+table.tenors { margin-bottom: 0.4rem; }
+table.tenors caption {
+  caption-side: top;
+  color: var(--dim);
+  font-family: var(--sans, inherit);
+  font-size: 0.8rem;
+  text-align: left;
+  padding-bottom: 0.35rem;
+}
+
+table.chain th,
+table.tenors th {
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+table.chain th:first-child,
+table.tenors th:first-child { text-align: left; }
+
+table.chain td,
+table.tenors td { padding: 0.28rem 0.5rem; border-bottom: 1px solid #1e2330; }
+td.num { text-align: right; white-space: nowrap; }
+td.pos { color: var(--ok); }
+
+/* A model figure and an age are context for the market numbers beside them, never a
+   substitute, so they are deliberately quieter. */
+td.model, td.age { color: var(--dim); }
+
+tr.in-band td { background: #1b2130; }
+tr.match td { background: #17303f; }
+tr.match td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* Boxed, not just shaded: this is the ranked pick among the tenors, a different claim
+   from "comparable contract for its expiry". */
+tr.best td { border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); }
+tr.best td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* Screened and ranked, but not subscribed: it has no market price at all. */
+tr.unquoted td { opacity: 0.62; }
+
+.badge {
+  border-radius: 3px;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.3rem;
+  background: var(--line);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.badge.warn { background: #3d2f0c; color: var(--warn); }
+.badge.bad { background: #3d1418; color: var(--bad); }
+
+ul.warnings {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0.5rem 0.8rem;
+  border-left: 2px solid var(--warn);
+  background: #221c0d;
+  color: var(--warn);
+  font-size: 0.82rem;
+}
+
+.error {
+  border-left: 2px solid var(--bad);
+  background: #241416;
+  color: #ffb4b0;
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.88rem;
+}
+
+.flash { animation: flash 0.6s ease-out; }
+@keyframes flash {
+  from { background: #274a63; }
+  to { background: transparent; }
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.8rem;
+  padding: 1.2rem 1.4rem 3rem;
+}
+footer h3 { color: var(--text); font-size: 0.9rem; margin: 0 0 0.6rem; }
+footer h3 + table { margin-bottom: 0.5rem; }
+footer dl { margin: 0; display: grid; grid-template-columns: 9rem 1fr; gap: 0.3rem 1rem; max-width: 68rem; }
+footer dt { color: var(--text); font-weight: 600; }
+footer dd { margin: 0; }
+footer code { font-family: var(--mono); font-size: 0.75rem; }
+
+footer > h3:not(:first-child) { margin-top: 1.6rem; }
+
+table.cols {
+  border-collapse: collapse;
+  max-width: 68rem;
+  text-align: left;
+}
+table.cols th, table.cols td { padding: 0.3rem 0.9rem 0.3rem 0; vertical-align: top; }
+table.cols thead th {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+table.cols tbody th {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  width: 7rem;
+}
+table.cols tbody tr + tr th, table.cols tbody tr + tr td { border-top: 1px solid #1e2330; }
+table.cols td.mono { font-family: var(--mono); font-size: 0.72rem; }
+table.cols tbody td:last-child { font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+
+footer p.note { margin: 0.6rem 0 0; max-width: 68rem; line-height: 1.5; }
+footer p.note strong { color: var(--text); }

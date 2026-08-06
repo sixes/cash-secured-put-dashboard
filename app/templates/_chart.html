@@ -1,0 +1,68 @@
+{# Price chart. Drawn wholly from ONE adjustment basis and labelled with it: Yahoo's
+   auto-adjusted close and Longbridge's forward-adjusted close are different series, so
+   stitching them would put a step in the line on the changeover date. The high and the
+   drawdown below are measured inside the drawn series, which is why they can disagree
+   with the Longbridge drawdown card beside them. #}
+{% set c = p.chart %}
+<div class="card wide">
+  <h4>Close · running high · SMA{{ c.sma_window }}</h4>
+
+  <svg class="price" viewBox="0 0 {{ c.width }} {{ c.height }}" role="img">
+    <title>
+      {{ p.ticker }} daily close, expanding running high and SMA{{ c.sma_window }},
+      {{ c.window_first_date }} to {{ c.last_date }}. Last close
+      {{ '%.2f'|format(c.last) }}, {{ '%+.2f'|format(c.drawdown_pct) }}% from a high of
+      {{ '%.2f'|format(c.high) }} set {{ c.high_date }}.
+    </title>
+    {% for value, y in c.y_ticks %}
+      <line class="grid" x1="{{ c.plot_left }}" y1="{{ '%.1f'|format(y) }}"
+            x2="{{ c.plot_right }}" y2="{{ '%.1f'|format(y) }}"/>
+      <text x="{{ c.plot_left - 4 }}" y="{{ '%.1f'|format(y + 3) }}" text-anchor="end">
+        {{- '%.0f'|format(value) -}}
+      </text>
+    {% endfor %}
+    {% for label, x in c.x_ticks %}
+      <text x="{{ '%.1f'|format(x) }}" y="{{ c.height - 3 }}" text-anchor="middle">
+        {{- label -}}
+      </text>
+    {% endfor %}
+    {% for l in c.lines %}
+      <polyline class="{{ l.cls }}" points="{{ l.points }}"/>
+    {% endfor %}
+  </svg>
+
+  <p class="legend">
+    {% for l in c.lines %}<span class="key {{ l.cls }}"></span>{{ l.label }}{% endfor %}
+  </p>
+
+  <p class="big {{ 'neg' if c.drawdown_pct < 0 else '' }}">
+    {{ '%+.2f'|format(c.drawdown_pct) }}%
+  </p>
+  <p class="sub">
+    {% if c.all_time %}from the all-time high{% else %}from the {{ c.n }}-session high{% endif %}
+    {{ '%.2f'|format(c.high) }} set {{ c.high_date }}
+  </p>
+  {% if c.sma is not none %}
+    <p class="sub">SMA{{ c.sma_window }} {{ '%.2f'|format(c.sma) }}</p>
+  {% else %}
+    <p class="sub badge">n={{ c.n }}/{{ c.sma_window }} — no SMA drawn</p>
+  {% endif %}
+
+  <p class="sub">
+    {{ c.source_label }} · {{ c.first_date }} → {{ c.last_date }} · {{ c.n }} closes
+    {%- if c.shown < c.n %} · last {{ c.shown }} drawn{% endif %}
+    {%- if not c.all_time %} <span class="badge">window high, not an ATH</span>{% endif %}
+  </p>
+
+  {# Two independent bases agreeing is confirmation; a gap is information. Surface it
+     rather than trusting whichever number happened to render. #}
+  {% if p.sma_gap_pct is not none
+        and p.sma_gap_pct|abs > settings.sma_cross_source_tolerance_pct %}
+    <p class="sub badge warn">
+      ≠SMA{{ c.sma_window }}: {{ '%+.2f'|format(p.sma_gap_pct) }}% vs the
+      Longbridge-based card — check the adjustment basis
+    </p>
+  {% endif %}
+
+  <p class="sub">Right edge is the last daily close; the header price is live.</p>
+</div>

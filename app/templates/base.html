@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CSP Screener{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header>
+    <h1>Cash-Secured Put Screener</h1>
+    {# One form, not two: HTML forbids nesting, and Save/Reset only need to submit the
+       same fields to a different action. Everything here works with scripting off. #}
+    <form action="/" method="get" class="search">
+      <input type="text" name="ticker" value="{{ query }}" placeholder="ticker, e.g. AAPL"
+             autocomplete="off" spellcheck="false" aria-label="Ticker">
+      <button type="submit">Load</button>
+      {% if query %}<a class="reset" href="/">defaults</a>{% endif %}
+
+      {% if param_groups %}
+        <details class="params" {% if param_query %}open{% endif %}>
+          <summary>
+            Screening parameters
+            {% if params_changed %}<span class="badge">{{ params_changed }} changed</span>{% endif %}
+            {% if saved_at %}<span class="badge">saved default {{ saved_at[:10] }}</span>{% endif %}
+          </summary>
+
+          <p class="note">
+            URL wins over the saved default, which wins over the code default; each field is
+            marked with the layer its value came from. Free fields take effect on the next
+            render, billed fields on the next chain rebuild.
+          </p>
+
+          {% for g in param_groups %}
+            <fieldset class="cost-{{ g.cost }}">
+              <legend>{{ g.label }}</legend>
+              <p class="note">{{ g.note }}</p>
+              <div class="fields">
+                {% for f in g.fields %}
+                  <label>
+                    <span>{{ f.label }} <span class="origin {{ f.origin }}">{{ f.origin }}</span></span>
+                    <input type="number" name="{{ f.name }}" value="{{ f.value }}"
+                           min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}"
+                           inputmode="decimal">
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+          {% endfor %}
+
+          <div class="actions">
+            <button type="submit">Apply</button>
+            <button type="submit" formaction="/settings/save" formmethod="post">Save as default</button>
+            <button type="submit" formaction="/settings/reset" formmethod="post">Reset to code defaults</button>
+          </div>
+        </details>
+      {% endif %}
+    </form>
+    <div class="link" data-status>
+      <span class="dot {{ 'ok' if status.label == 'live' else ('warn' if status.session_open else 'idle') }}"
+            data-status-dot></span>
+      <span data-status-label>{{ status.label }}</span>
+      <span class="quota">quota {{ status.quota_spent }}/{{ status.quota_spent + status.quota_available }} per min</span>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    {% block footer %}{% endblock %}
+  </footer>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
