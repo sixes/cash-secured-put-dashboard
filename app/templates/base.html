@@ -18,7 +18,9 @@
       {% if query %}<a class="reset" href="/">defaults</a>{% endif %}
 
       {% if param_groups %}
-        <details class="params" {% if param_query %}open{% endif %}>
+        {# Open only on the panel's own submit (`params_open`), never because the URL
+           happens to carry parameters — the ticker box submits these fields too. #}
+        <details class="params" {% if params_open %}open{% endif %}>
           <summary>
             Screening parameters
             {% if params_changed %}<span class="badge">{{ params_changed }} changed</span>{% endif %}
@@ -49,9 +51,11 @@
           {% endfor %}
 
           <div class="actions">
-            <button type="submit">Apply</button>
-            <button type="submit" formaction="/settings/save" formmethod="post">Save as default</button>
-            <button type="submit" formaction="/settings/reset" formmethod="post">Reset to code defaults</button>
+            <button type="submit" name="params_open" value="1">Apply</button>
+            <button type="submit" name="params_open" value="1"
+                    formaction="/settings/save" formmethod="post">Save as default</button>
+            <button type="submit" name="params_open" value="1"
+                    formaction="/settings/reset" formmethod="post">Reset to code defaults</button>
           </div>
         </details>
       {% endif %}

@@ -96,6 +96,7 @@ async def index(request: Request, ticker: str | None = None):
                 1 for g in param_groups for f in g["fields"] if f["origin"] != "code"
             ),
             "param_query": to_query(params),
+            "params_open": "params_open" in request.query_params,
             "saved_at": resolved.saved_at,
             "chain_columns": chain_columns(params),
             "row_states": row_states(params),
@@ -141,14 +142,18 @@ async def settings_save(request: Request):
     form = await _form(request)
     params, _ = from_query(form, defaults())
     get_store().save_screen_defaults(to_dict(params))
-    return RedirectResponse(_ticker_url(form.get("ticker")), status_code=303)
+    return RedirectResponse(
+        _ticker_url(form.get("ticker"), form.get("params_open")), status_code=303
+    )
 
 
 @app.post("/settings/reset")
 async def settings_reset(request: Request):
     form = await _form(request)
     get_store().clear_screen_defaults()
-    return RedirectResponse(_ticker_url(form.get("ticker")), status_code=303)
+    return RedirectResponse(
+        _ticker_url(form.get("ticker"), form.get("params_open")), status_code=303
+    )
 
 
 async def _form(request: Request) -> dict[str, str]:
@@ -161,9 +166,14 @@ async def _form(request: Request) -> dict[str, str]:
     return dict(parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True))
 
 
-def _ticker_url(ticker: object) -> str:
+def _ticker_url(ticker: object, params_open: object = None) -> str:
+    pairs = {}
     raw = str(ticker or "").strip()
-    return f"/?{urlencode({'ticker': raw})}" if raw else "/"
+    if raw:
+        pairs["ticker"] = raw
+    if params_open:
+        pairs["params_open"] = "1"
+    return f"/?{urlencode(pairs)}" if pairs else "/"
 
 
 async def _panel(engine: LiveEngine, raw: str, params: ScreenParams) -> dict:
