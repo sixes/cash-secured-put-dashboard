@@ -313,6 +313,23 @@ class TestEnsure:
         await asyncio.gather(*(engine.ensure("SPY") for _ in range(5)))
         assert engine.build_calls == ["SPY.US"]
 
+    async def test_different_tickers_build_concurrently(self, engine, monkeypatch):
+        started = 0
+        gate = asyncio.Event()
+
+        async def build(cl, ticker, spot, r, rv20=None, now=None, params=None, previous=None, only=None):
+            nonlocal started
+            started += 1
+            if started == 2:
+                gate.set()
+            await asyncio.wait_for(gate.wait(), timeout=1.0)
+            return _chain(ticker, spot)
+
+        monkeypatch.setattr(live_mod, "build_chain", build)
+        views = await asyncio.gather(engine.ensure("SPY"), engine.ensure("QQQ"))
+        assert [v.ticker for v in views] == ["SPY.US", "QQQ.US"]
+        assert started == 2
+
 
 class TestScreenParameters:
     """The free / billed / trend split, which is the whole point of the feature."""

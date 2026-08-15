@@ -18,10 +18,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from app.columns import MISSING_NOTE, UNQUOTED_NOTE, chain_columns, row_states
 from app.columns import as_json as columns_json
-from app.config import MAX_SUBSCRIBED_SYMBOLS, settings
+from app.config import MAX_CONCURRENT_REQUESTS, MAX_SUBSCRIBED_SYMBOLS, settings
 from app.live import LiveEngine, UnknownTicker, get_engine
 from app.params import ScreenParams, defaults, from_query, groups, to_dict, to_query
 from app.providers import pricehistory, rates
@@ -40,9 +41,35 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals["missing_note"] = MISSING_NOTE
 templates.env.globals["unquoted_note"] = UNQUOTED_NOTE
 
+
+def _asset(name: str) -> str:
+    """URL for a static file, stamped with its mtime.
+
+    StaticFiles sends no Cache-Control, so a browser is free to reuse a cached
+    stylesheet without revalidating — a shipped CSS change then looks like it never
+    landed. Stat per render, not at import: --reload only watches *.py, so a CSS edit
+    never restarts the process.
+    """
+    path = BASE_DIR / "static" / name
+    try:
+        return f"/static/{name}?v={int(path.stat().st_mtime)}"
+    except OSError:
+        return f"/static/{name}"
+
+
+templates.env.globals["asset"] = _asset
+
 # Emit a status frame this often even when nothing moves, so a client can tell a
 # quiet market from a dead connection.
 SSE_HEARTBEAT_SECONDS = 10.0
+
+# Same idea for the page stream: keep bytes moving while a panel is still building.
+STREAM_KEEPALIVE_SECONDS = 5.0
+
+# Where `index` cuts the rendered shell in two so panels can be streamed into the gap.
+# An HTML comment survives a browser that receives only the head, and the digits keep it
+# from colliding with anything a template legitimately emits.
+PANEL_SLOT = "<!--panel-slot-93f1c7-->"
 
 
 @asynccontextmanager
@@ -65,41 +92,82 @@ async def index(request: Request, ticker: str | None = None):
     engine = get_engine()
     resolved = _resolve_params(request)
     params = resolved.params
-    wanted = [ticker] if ticker else list(settings.default_tickers)
+    wanted = (
+        [t.strip() for t in ticker.split(",") if t.strip()]
+        if ticker
+        else list(settings.default_tickers)
+    )
 
-    panels, errors = [], list(resolved.errors)
-    for raw in wanted:
-        try:
-            panels.append(await _panel(engine, raw, params))
-        except UnknownTicker:
-            errors.append(f"{raw.upper()}: no quote — check the symbol")
-        except LongportUnavailable as exc:
-            errors.append(f"market data unavailable: {exc}")
-        except Exception as exc:  # noqa: BLE001
-            log.exception("panel failed for %s", raw)
-            errors.append(f"{raw.upper()}: {exc}")
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+    async def load_panel(raw: str) -> dict:
+        async with semaphore:
+            try:
+                return await _panel(engine, raw, params)
+            except UnknownTicker:
+                return _error_panel(raw, f"{raw.upper()}: no quote — check the symbol")
+            except LongportUnavailable as exc:
+                return _error_panel(raw, f"market data unavailable: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                log.exception("panel failed for %s", raw)
+                return _error_panel(raw, f"{raw.upper()}: {exc}")
+
+    # Every build starts now; the response walks them in requested order. A cold
+    # 20-ticker page costs ~28 quota units each against a 450/min working limit, so the
+    # last panel can be minutes out — long enough that a response withheld until then
+    # is reset somewhere in the path rather than delivered.
+    builds = [asyncio.create_task(load_panel(raw)) for raw in wanted]
 
     param_groups = groups(params, request.query_params, resolved.saved)
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "panels": panels,
-            "errors": errors,
-            "query": ticker or "",
-            "status": engine.status(),
-            "settings": settings,
-            "rate": rates.rate_provenance(),
-            "params": params,
-            "param_groups": param_groups,
-            "params_changed": sum(
-                1 for g in param_groups for f in g["fields"] if f["origin"] != "code"
-            ),
-            "param_query": to_query(params),
-            "params_open": "params_open" in request.query_params,
-            "saved_at": resolved.saved_at,
-            "chain_columns": chain_columns(params),
-            "row_states": row_states(params),
+    context = {
+        "request": request,
+        "nav": [
+            {"ticker": raw.strip().upper(), "anchor": _panel_anchor(raw)} for raw in wanted
+        ],
+        "errors": list(resolved.errors),
+        "query": ticker or "",
+        "status": engine.status(),
+        "settings": settings,
+        "rate": rates.rate_provenance(),
+        "params": params,
+        "param_groups": param_groups,
+        "params_changed": sum(
+            1 for g in param_groups for f in g["fields"] if f["origin"] != "code"
+        ),
+        "param_query": to_query(params),
+        "params_open": "params_open" in request.query_params,
+        "saved_at": resolved.saved_at,
+        "chain_columns": chain_columns(params),
+        "row_states": row_states(params),
+        "panel_slot": Markup(PANEL_SLOT),
+    }
+
+    shell = templates.get_template("dashboard.html").render(context)
+    head, tail = shell.split(PANEL_SLOT, 1)
+    panel_template = templates.get_template("_panel.html")
+
+    async def body():
+        yield head
+        for raw, build in zip(wanted, builds):
+            # A build waiting on the quota governor can be silent for its whole backoff
+            # (measured 51s), which an intermediary is entitled to read as a dead
+            # connection. shield() keeps the timeout from cancelling work already paid for.
+            while not build.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(build), STREAM_KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    yield f"<!-- building {raw.strip().upper()} -->\n"
+            yield panel_template.render(context | {"p": build.result()})
+        yield tail
+
+    return StreamingResponse(
+        body(),
+        media_type="text/html; charset=utf-8",
+        headers={
+            # The page is a point-in-time snapshot of a live market, and a heuristically
+            # cached copy would show yesterday's numbers with no request to disprove them.
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
         },
     )
 
@@ -176,12 +244,28 @@ def _ticker_url(ticker: object, params_open: object = None) -> str:
     return f"/?{urlencode(pairs)}" if pairs else "/"
 
 
+def _panel_anchor(raw: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "-" for ch in raw.strip().upper())
+    return f"panel-{safe or 'TICKER'}"
+
+
+def _error_panel(raw: str, message: str) -> dict:
+    ticker = raw.strip().upper()
+    return {
+        "ticker": ticker,
+        "symbol": ticker,
+        "anchor": _panel_anchor(ticker),
+        "error": message,
+    }
+
+
 async def _panel(engine: LiveEngine, raw: str, params: ScreenParams) -> dict:
     view = await engine.ensure(raw, params)
     chain = engine.quoted(view.ticker, params)
     return {
         "ticker": display_ticker(view.ticker),
         "symbol": view.ticker,
+        "anchor": _panel_anchor(raw),
         "view": view,
         "trend": view.trend,
         "chart": view.chart,

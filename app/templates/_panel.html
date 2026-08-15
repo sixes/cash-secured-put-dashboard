@@ -1,0 +1,36 @@
+{#- One ticker's card. Rendered on its own so `index` can flush it the moment its build
+    lands, instead of holding the whole response until the slowest ticker clears the
+    option-quota governor.
+
+    The stream must carry the effective parameters, or its patch frames would recompute
+    the match and the liquidity flags from the defaults and overwrite the page that was
+    just rendered correctly. #}
+<section id="{{ p.anchor }}" class="panel" data-ticker="{{ p.symbol }}"
+         {% if not p.error %}data-stream="/api/stream/{{ p.symbol|urlencode }}{% if param_query %}?{{ param_query }}{% endif %}"{% endif %}>
+  <h2>
+    {{ p.ticker }}
+    {% if not p.error %}<span class="spot" data-spot>{{ '%.2f'|format(p.view.spot) }}</span>{% endif %}
+  </h2>
+  {% if p.error %}
+    <p class="error">{{ p.error }}</p>
+  {% else %}
+    {% if p.view.error %}
+      <p class="error">last refresh failed: {{ p.view.error }} — figures below are stale</p>
+    {% endif %}
+    {% if p.view.quota_wait_seconds > 1 %}
+      <p class="note wait">
+        Chain rebuilt after waiting {{ '%.1f'|format(p.view.quota_wait_seconds) }}s for
+        option quota — the account-wide budget is {{ p.cost.limit }} option symbols per
+        rolling minute and this {{ p.cost.tenors }}-tenor rebuild billed
+        {{ p.cost.last_rebuild }} of them.
+      </p>
+    {% elif p.view.underlying_seconds > 2 %}
+      <p class="note wait">
+        Price history refetched in {{ '%.1f'|format(p.view.underlying_seconds) }}s — no
+        option quota spent, but the daily bars and the chart were rebuilt.
+      </p>
+    {% endif %}
+    {% include "_trend.html" %}
+    {% include "_options.html" %}
+  {% endif %}
+</section>

@@ -61,7 +61,12 @@ class Settings:
             os.environ.get("DASHBOARD_DB", PROJECT_ROOT / "data" / "dashboard.db")
         )
     )
-    default_tickers: tuple[str, ...] = ("SPY", "QQQ")
+    default_tickers: tuple[str, ...] = (
+        "SOXL", "KORU", "TECL", "UPRO", "SPXL", "MAGX",
+        "DRAM", "RAM", "USD", "MSFU", "BNO",
+        "TQQQ", "ROM", "QLD", "WMT", "QQQ", "QQQM", "SPY",
+        "SPYM", "PSI"
+    )
 
     # Daily bars. 1000 is the hard API ceiling (~4 years); 2000 fails with 301607
     # "request too many klines". Needed so the drawdown high covers a real cycle,

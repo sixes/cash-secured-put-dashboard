@@ -5,39 +5,27 @@
     <p class="error">{{ e }}</p>
   {% endfor %}
 
-  {% for p in panels %}
-    {#- The stream must carry the effective parameters, or its patch frames would
-        recompute the match and the liquidity flags from the defaults and overwrite
-        the page that was just rendered correctly. #}
-    <section class="panel" data-ticker="{{ p.symbol }}"
-             data-stream="/api/stream/{{ p.symbol|urlencode }}{% if param_query %}?{{ param_query }}{% endif %}">
-      <h2>
-        {{ p.ticker }}
-        <span class="spot" data-spot>{{ '%.2f'|format(p.view.spot) }}</span>
-      </h2>
-      {% if p.view.error %}
-        <p class="error">last refresh failed: {{ p.view.error }} — figures below are stale</p>
-      {% endif %}
-      {% if p.view.quota_wait_seconds > 1 %}
-        <p class="note wait">
-          Chain rebuilt after waiting {{ '%.1f'|format(p.view.quota_wait_seconds) }}s for
-          option quota — the account-wide budget is {{ p.cost.limit }} option symbols per
-          rolling minute and this {{ p.cost.tenors }}-tenor rebuild billed
-          {{ p.cost.last_rebuild }} of them.
-        </p>
-      {% elif p.view.underlying_seconds > 2 %}
-        <p class="note wait">
-          Price history refetched in {{ '%.1f'|format(p.view.underlying_seconds) }}s — no
-          option quota spent, but the daily bars and the chart were rebuilt.
-        </p>
-      {% endif %}
-      {% include "_trend.html" %}
-      {% include "_options.html" %}
-    </section>
-  {% endfor %}
+  {#- The bar and the panels are driven by the requested tickers, not by finished
+      panels: this shell is rendered and flushed before any build has landed. #}
+  {% if nav|length > 2 %}
+    <nav class="result-jump-bar" aria-label="Ticker results">
+      <span class="ticker-bar-label">Results</span>
+      {% for n in nav %}
+        <a href="#{{ n.anchor }}" class="ticker-chip">{{ n.ticker }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
 
-  {% if not panels and not errors %}
+  {#- `index` splits the rendered shell here and streams one `_panel.html` per ticker
+      into the gap, in requested order, as each build finishes. #}
+  {{ panel_slot }}
+
+  {% if not nav and not errors %}
     <p class="error">No data. Check that the Longbridge credentials are set in .env</p>
+  {% endif %}
+
+  {% if nav|length > 2 %}
+    <a href="#top" class="to-top" aria-label="Back to top">↑ Top</a>
   {% endif %}
 {% endblock %}
 

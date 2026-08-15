@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CSP Screener{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
 </head>
 <body>
-  <header>
+  <header id="top">
     <h1>Cash-Secured Put Screener</h1>
     {# One form, not two: HTML forbids nesting, and Save/Reset only need to submit the
        same fields to a different action. Everything here works with scripting off. #}
     <form action="/" method="get" class="search">
-      <input type="text" name="ticker" value="{{ query }}" placeholder="ticker, e.g. AAPL"
+      <input type="text" name="ticker" value="{{ query }}" placeholder="tickers, e.g. SOXL,KORU,TECL"
              autocomplete="off" spellcheck="false" aria-label="Ticker">
       <button type="submit">Load</button>
       {% if query %}<a class="reset" href="/">defaults</a>{% endif %}
@@ -68,6 +68,15 @@
     </div>
   </header>
 
+  <div class="ticker-bar">
+    <span class="ticker-bar-label">Watchlist</span>
+    <a href="/" class="ticker-chip all{% if not query %} active{% endif %}">All</a>
+    {% for t in settings.default_tickers %}
+      <a href="/?ticker={{ t }}"
+         class="ticker-chip{% if query and t in query.upper().split(',') %} active{% endif %}">{{ t }}</a>
+    {% endfor %}
+  </div>
+
   <main>
     {% block content %}{% endblock %}
   </main>
@@ -75,6 +84,6 @@
   <footer>
     {% block footer %}{% endblock %}
   </footer>
-  <script src="/static/app.js" defer></script>
+  <script src="{{ asset('app.js') }}" defer></script>
 </body>
 </html>

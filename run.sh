@@ -47,9 +47,23 @@ start() {
     return 1
   fi
 
+  # running() is false for a stale pidfile whose worker survived, and that worker
+  # still answers on the port — with resets, not pages.
+  if port_busy; then
+    echo "port $PORT already has a listener but no valid pidfile:" >&2
+    ss -ltnp "sport = :$PORT" >&2
+    return 1
+  fi
+
   mkdir -p "$(dirname "$PID_FILE")" "$(dirname "$LOG_FILE")"
 
-  nohup "$PY" -m uvicorn app.main:app --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
+  # setsid puts the reloader and its worker child in one process group. Without it,
+  # stop() can only signal the reloader, and a SIGKILL there orphans a worker that
+  # still holds the listening socket.
+  # log_config.json also configures root, so app-level logs get the same timestamp
+  # as uvicorn's; the Z suffix is honest because TZ is pinned to UTC above.
+  setsid nohup "$PY" -m uvicorn app.main:app --reload --log-config log_config.json \
+    --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
 
   # Credentials, a bad port and an import error all fail here rather than at the
@@ -66,6 +80,10 @@ start() {
   fi
 }
 
+port_busy() {
+  ss -ltn "sport = :$PORT" 2>/dev/null | grep -q LISTEN
+}
+
 stop() {
   if ! running; then
     rm -f "$PID_FILE"
@@ -75,7 +93,9 @@ stop() {
 
   local pid
   pid=$(<"$PID_FILE")
-  kill "$pid"
+  # Negative pid signals the process group: under --reload the worker is a separate
+  # process, and killing only the reloader leaves it holding the port.
+  kill -- "-$pid" 2>/dev/null || kill "$pid"
 
   # SIGTERM lets uvicorn close the Longbridge long link and the open SSE streams.
   for _ in $(seq 1 50); do
@@ -85,8 +105,20 @@ stop() {
 
   if running; then
     echo "pid $pid ignored SIGTERM after 10s; forcing" >&2
-    kill -9 "$pid"
+    kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid"
     sleep 0.5
+  fi
+
+  # The pidfile pid can be gone while a worker still owns the socket; starting now
+  # would put two accept queues on one port and reset arbitrary connections.
+  for _ in $(seq 1 50); do
+    port_busy || break
+    sleep 0.2
+  done
+  if port_busy; then
+    echo "port $PORT still has a listener after stop:" >&2
+    ss -ltnp "sport = :$PORT" >&2
+    return 1
   fi
 
   rm -f "$PID_FILE"

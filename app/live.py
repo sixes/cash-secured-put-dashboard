@@ -146,6 +146,7 @@ class LiveEngine:
         self.hub = QuoteHub(self.client)
         self.subs = SubscriptionManager(self.client)
         self._views: dict[str, TickerView] = {}
+        self._build_locks: dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
         self._poller: asyncio.Task | None = None
         self._governor = get_governor()
@@ -233,9 +234,22 @@ class LiveEngine:
         async with self._lock:
             view = self._views.get(symbol)
             if view is None:
-                view = await self._build(symbol, p)
-                self._views[symbol] = view
-                return view
+                build_lock = self._build_locks.get(symbol)
+                if build_lock is None:
+                    build_lock = asyncio.Lock()
+                    self._build_locks[symbol] = build_lock
+            else:
+                build_lock = None
+
+        if view is None:
+            async with build_lock:
+                async with self._lock:
+                    view = self._views.get(symbol)
+                if view is None:
+                    view = await self._build(symbol, p)
+                    async with self._lock:
+                        self._views[symbol] = view
+            return view
 
         underlying, chain = self._work_for(view, p, limit)
         if underlying or chain:
