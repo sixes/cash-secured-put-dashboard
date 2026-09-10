@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dev server control for the CSP screener.
 #
-#   ./run.sh start | stop | restart | status | log
+#   ./run.sh start | stop | restart | status | logs
 #
 # Binds every interface so other machines can reach it. There is NO authentication:
 # anyone who can reach this port can load arbitrary tickers and therefore spend the
@@ -62,7 +62,13 @@ start() {
   # still holds the listening socket.
   # log_config.json also configures root, so app-level logs get the same timestamp
   # as uvicorn's; the Z suffix is honest because TZ is pinned to UTC above.
+  # --timeout-graceful-shutdown is what keeps stop() from needing SIGKILL: an SSE
+  # stream never ends by itself, so uvicorn's default unbounded "waiting for
+  # connections to close" outlives stop()'s 10s deadline on every restart. At the
+  # deadline uvicorn cancels those connections and *still* runs lifespan shutdown,
+  # so engine.stop() closes the Longbridge link instead of being killed mid-flight.
   setsid nohup "$PY" -m uvicorn app.main:app --reload --log-config log_config.json \
+    --timeout-graceful-shutdown 5 \
     --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
 
@@ -159,7 +165,7 @@ status() {
   echo "log       $LOG_FILE"
 }
 
-log() {
+logs() {
   if [[ ! -f $LOG_FILE ]]; then
     echo "no log yet at $LOG_FILE — start the server first" >&2
     return 1
@@ -174,10 +180,10 @@ case "${1:-}" in
     stop
     start
     ;;
-  log) log ;;
+  logs) logs ;;
   status) status ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|log}" >&2
+    echo "usage: $0 {start|stop|restart|status|logs}" >&2
     exit 2
     ;;
 esac

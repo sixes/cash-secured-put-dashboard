@@ -10,7 +10,29 @@
   <h2>
     {{ p.ticker }}
     {% if not p.error %}<span class="spot" data-spot>{{ '%.2f'|format(p.view.spot) }}</span>{% endif %}
+    <span class="panel-actions">
+      {% if not p.error %}
+        {#- Hidden until app.js unhides it: with scripting off there is no stream to stop,
+            and a button that cannot work must not be offered. Closing the EventSource
+            disconnects the request, which drops the viewer — that is what stops the
+            billed polling for this ticker. #}
+        <button type="button" class="panel-action" data-live-toggle hidden>Stop live</button>
+      {% endif %}
+      {#- With scripting on, app.js drops this panel in place — a rescreen would rebuild
+          every other ticker from cold and empty the page for minutes. The href is the
+          no-JS fallback, and is built from nav rather than the selection so removing one
+          panel from the All page pins the rest explicitly. #}
+      <a class="panel-action" data-remove="{{ p.ticker }}"
+         href="/?{% for n in nav if n.ticker != p.ticker %}ticker={{ n.ticker|urlencode }}&amp;{% endfor %}{{ param_query }}"
+         title="Drop {{ p.ticker }} from this page">Remove</a>
+    </span>
   </h2>
+  {% if not p.error %}
+    <p class="note paused" data-paused hidden>
+      Live updates stopped for {{ p.ticker }} — the figures below are frozen at the time
+      shown and no option quota is being spent on it.
+    </p>
+  {% endif %}
   {% if p.error %}
     <p class="error">{{ p.error }}</p>
   {% else %}

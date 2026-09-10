@@ -7,7 +7,10 @@
   <link rel="stylesheet" href="{{ asset('app.css') }}">
 </head>
 <body>
-  <header id="top">
+  {# The scroll target cannot live on the header: it is sticky, so it never leaves the
+     viewport and the browser scrolls nowhere. #}
+  <span id="top"></span>
+  <header>
     <h1>Cash-Secured Put Screener</h1>
     {# One form, not two: HTML forbids nesting, and Save/Reset only need to submit the
        same fields to a different action. Everything here works with scripting off. #}
@@ -68,13 +71,40 @@
     </div>
   </header>
 
-  <div class="ticker-bar">
-    <span class="ticker-bar-label">Watchlist</span>
-    <a href="/" class="ticker-chip all{% if not query %} active{% endif %}">All</a>
-    {% for t in settings.default_tickers %}
-      <a href="/?ticker={{ t }}"
-         class="ticker-chip{% if query and t in query.upper().split(',') %} active{% endif %}">{{ t }}</a>
-    {% endfor %}
+  {# Both bars pin together: with results on the page the watchlist is how you change the
+     selection and the jump bar is how you reach a panel, so neither may scroll away. One
+     sticky container, because the header's height changes when the parameters open. #}
+  <div class="bars">
+    {# Toggle chips, not links: a link can only carry one ticker, and the point is to screen
+       a handful without paying for all twenty. The checkbox is the state — hidden, but real,
+       so selection and submit both work with scripting off. #}
+    <form action="/" method="get" class="ticker-bar">
+      <span class="ticker-bar-label">Watchlist</span>
+      <a href="/" class="ticker-chip all{% if not selected %} active{% endif %}">All</a>
+      {% for t in settings.default_tickers %}
+        {#- No server-rendered `active` class here: it would survive a click and leave a
+            deselected chip still looking selected. The checkbox is the only state. #}
+        <label class="ticker-chip pick" title="{{ t }} — click to select or deselect">
+          <input type="checkbox" name="ticker" value="{{ t }}"
+                 {% if t in selected %}checked{% endif %}>
+          <span>{{ t }}</span>
+        </label>
+      {% endfor %}
+      {# Selecting tickers must not quietly revert the screening parameters to the defaults. #}
+      {% for g in param_groups %}{% for f in g.fields %}
+        <input type="hidden" name="{{ f.name }}" value="{{ f.value }}">
+      {% endfor %}{% endfor %}
+      <button type="submit" class="screen-selected">Screen selected</button>
+    </form>
+
+    {% if nav|length > 1 %}
+      <nav class="result-jump-bar" aria-label="Ticker results">
+        <span class="ticker-bar-label">Results</span>
+        {% for n in nav %}
+          <a href="#{{ n.anchor }}" class="ticker-chip">{{ n.ticker }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
   </div>
 
   <main>

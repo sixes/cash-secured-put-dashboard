@@ -5,26 +5,16 @@
     <p class="error">{{ e }}</p>
   {% endfor %}
 
-  {#- The bar and the panels are driven by the requested tickers, not by finished
-      panels: this shell is rendered and flushed before any build has landed. #}
-  {% if nav|length > 2 %}
-    <nav class="result-jump-bar" aria-label="Ticker results">
-      <span class="ticker-bar-label">Results</span>
-      {% for n in nav %}
-        <a href="#{{ n.anchor }}" class="ticker-chip">{{ n.ticker }}</a>
-      {% endfor %}
-    </nav>
-  {% endif %}
-
   {#- `index` splits the rendered shell here and streams one `_panel.html` per ticker
-      into the gap, in requested order, as each build finishes. #}
+      into the gap as each build finishes — whichever lands first, so the panels can
+      arrive in a different order from the jump bar above. #}
   {{ panel_slot }}
 
   {% if not nav and not errors %}
     <p class="error">No data. Check that the Longbridge credentials are set in .env</p>
   {% endif %}
 
-  {% if nav|length > 2 %}
+  {% if nav|length > 1 %}
     <a href="#top" class="to-top" aria-label="Back to top">↑ Top</a>
   {% endif %}
 {% endblock %}

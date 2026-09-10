@@ -87,16 +87,30 @@ app = FastAPI(title="CSP Screener", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
+def _wanted_tickers(request: Request) -> list[str]:
+    """Tickers to screen, in the order the user picked them.
+
+    The chip bar submits one `ticker` value per selected chip; the text box submits a
+    single comma-joined one. Both spellings are accepted so existing links keep working.
+    """
+    raw: list[str] = []
+    for value in request.query_params.getlist("ticker"):
+        raw.extend(part.strip().upper() for part in value.split(","))
+
+    picked: list[str] = []
+    for t in raw:
+        if t and t not in picked:
+            picked.append(t)
+    return picked or list(settings.default_tickers)
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, ticker: str | None = None):
+async def index(request: Request):
     engine = get_engine()
     resolved = _resolve_params(request)
     params = resolved.params
-    wanted = (
-        [t.strip() for t in ticker.split(",") if t.strip()]
-        if ticker
-        else list(settings.default_tickers)
-    )
+    wanted = _wanted_tickers(request)
+    selected = wanted if request.query_params.getlist("ticker") else []
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -125,7 +139,8 @@ async def index(request: Request, ticker: str | None = None):
             {"ticker": raw.strip().upper(), "anchor": _panel_anchor(raw)} for raw in wanted
         ],
         "errors": list(resolved.errors),
-        "query": ticker or "",
+        "query": ",".join(selected),
+        "selected": selected,
         "status": engine.status(),
         "settings": settings,
         "rate": rates.rate_provenance(),
@@ -148,16 +163,24 @@ async def index(request: Request, ticker: str | None = None):
 
     async def body():
         yield head
-        for raw, build in zip(wanted, builds):
+        order = {build: i for i, build in enumerate(builds)}
+        pending = set(builds)
+        while pending:
             # A build waiting on the quota governor can be silent for its whole backoff
             # (measured 51s), which an intermediary is entitled to read as a dead
-            # connection. shield() keeps the timeout from cancelling work already paid for.
-            while not build.done():
-                try:
-                    await asyncio.wait_for(asyncio.shield(build), STREAM_KEEPALIVE_SECONDS)
-                except asyncio.TimeoutError:
-                    yield f"<!-- building {raw.strip().upper()} -->\n"
-            yield panel_template.render(context | {"p": build.result()})
+            # connection.
+            done, pending = await asyncio.wait(
+                pending, timeout=STREAM_KEEPALIVE_SECONDS, return_when=asyncio.FIRST_COMPLETED
+            )
+            if not done:
+                waiting = sorted(pending, key=order.get)
+                still = ",".join(wanted[order[b]].strip().upper() for b in waiting)
+                yield f"<!-- building {still} -->\n"
+                continue
+            # Whoever finished first goes out first — a slow ticker must not hold back a
+            # panel that is already paid for. Ties keep the order the user picked.
+            for build in sorted(done, key=order.get):
+                yield panel_template.render(context | {"p": build.result()})
         yield tail
 
     return StreamingResponse(

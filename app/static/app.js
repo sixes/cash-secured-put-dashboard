@@ -104,24 +104,73 @@
     // overwrite a page rendered with different ones.
     var url =
       panel.dataset.stream || "/api/stream/" + encodeURIComponent(panel.dataset.ticker);
-    // EventSource reconnects on its own, so a dropped stream needs no retry logic
-    // here. The server's own link status is what the indicator reflects.
-    var es = new EventSource(url);
-    es.addEventListener("patch", function (ev) {
-      var data;
-      try {
-        data = JSON.parse(ev.data);
-      } catch (err) {
-        return;
+    var es = null;
+
+    function connect() {
+      // EventSource reconnects on its own, so a dropped stream needs no retry logic
+      // here. The server's own link status is what the indicator reflects.
+      es = new EventSource(url);
+      es.addEventListener("patch", function (ev) {
+        var data;
+        try {
+          data = JSON.parse(ev.data);
+        } catch (err) {
+          return;
+        }
+        if (data.status) patchStatus(data.status);
+        patchPanel(panel, data);
+      });
+      es.onerror = function () {
+        var dot = document.querySelector("[data-status-dot]");
+        var label = document.querySelector("[data-status-label]");
+        if (dot) dot.className = "dot bad";
+        if (label) label.textContent = "reconnecting";
+      };
+    }
+
+    connect();
+
+    // Registered before the toggle's early return: an error panel carries no live toggle
+    // but still offers Remove.
+    var remove = panel.querySelector("[data-remove]");
+    if (remove) {
+      remove.addEventListener("click", function (ev) {
+        // The href stays the no-JS fallback; following it here would rescreen every other
+        // ticker from cold and blank the page for minutes.
+        ev.preventDefault();
+        if (es) {
+          es.close();
+          es = null;
+        }
+        var jump = document.querySelector(
+          '.result-jump-bar a[href="#' + panel.id + '"]'
+        );
+        if (jump) jump.remove();
+        var chip = document.querySelector(
+          '.ticker-bar input[name="ticker"][value="' + remove.dataset.remove + '"]'
+        );
+        if (chip) chip.checked = false;
+        panel.remove();
+      });
+    }
+
+    var toggle = panel.querySelector("[data-live-toggle]");
+    var paused = panel.querySelector("[data-paused]");
+    if (!toggle) return;
+    toggle.hidden = false;
+    toggle.addEventListener("click", function () {
+      if (es) {
+        // Closing the stream disconnects the request, and the server only polls views
+        // with a viewer — so this is what stops billing option quota for this ticker.
+        es.close();
+        es = null;
+        toggle.textContent = "Resume live";
+        if (paused) paused.hidden = false;
+      } else {
+        connect();
+        toggle.textContent = "Stop live";
+        if (paused) paused.hidden = true;
       }
-      if (data.status) patchStatus(data.status);
-      patchPanel(panel, data);
     });
-    es.onerror = function () {
-      var dot = document.querySelector("[data-status-dot]");
-      var label = document.querySelector("[data-status-label]");
-      if (dot) dot.className = "dot bad";
-      if (label) label.textContent = "reconnecting";
-    };
   });
 })();
